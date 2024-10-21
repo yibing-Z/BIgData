@@ -2,10 +2,13 @@ com/example/hadoop/Fund.class
 com/example/hadoop/Fund$FundFlowMapper.class
 main/java/com/example/hadoop/WeeklyFundFlow$FundFlowReducer$1.class
 main/java/com/example/hadoop/WeeklyFundFlow$FundFlowReducer.class
+main/java/com/example/hadoop/Constellar.class
 main/java/com/example/hadoop/WeeklyFundFlow$FundFlowReducer$WeekData.class
 main/java/com/example/hadoop/Active$ActiveUserMapper.class
 main/java/com/example/hadoop/Active$ActiveUserReducer$1.class
 main/java/com/example/hadoop/Active$ActiveUserReducer.class
+main/java/com/example/hadoop/Constellar$ActiveDaysMapper.class
+main/java/com/example/hadoop/Constellar$AvgActiveDaysReducer.class
 main/java/com/example/hadoop/WeeklyFundFlow$FundFlowMapper.class
 main/java/com/example/hadoop/WeeklyFundFlow.class
 main/java/com/example/hadoop/Active$ActiveUserReducer$UserActivity.class

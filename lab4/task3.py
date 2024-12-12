@@ -1,33 +1,46 @@
-from statsmodels.tsa.arima.model import ARIMA
-import pandas as pd
-# 加载数据
-data = pd.read_csv("user_balance_table.csv")
-data['report_date'] = pd.to_datetime(data['report_date'], format='%Y%m%d')
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, to_date, expr, lit
+from pyspark.sql.types import IntegerType, DateType
+from pyspark.ml.feature import VectorAssembler
+from pyspark.ml.regression import LinearRegression
+spark = SparkSession.builder.appName("Date_Regression").getOrCreate()
 
-# 按日期聚合申购和赎回总额
-daily_data = data.groupby('report_date').agg({'total_purchase_amt': 'sum', 'total_redeem_amt': 'sum'}).reset_index()
-# 设置日期为索引
-daily_data.set_index('report_date', inplace=True)
+user_balance = spark.read.csv("file:///home/user/spark_code/user_balance_table.csv", header=True, inferSchema=True)
+user_balance = user_balance.withColumn("report_date", to_date(col("report_date"), "yyyyMMdd"))
 
-# 训练 ARIMA 模型
-model_purchase = ARIMA(daily_data['total_purchase_amt'], order=(5, 1, 0))
-model_redeem = ARIMA(daily_data['total_redeem_amt'], order=(5, 1, 0))
+daily_balance = user_balance.groupBy("report_date") \
+                            .agg({"total_purchase_amt": "sum", "total_redeem_amt": "sum"}) \
+                            .withColumnRenamed("sum(total_purchase_amt)", "total_purchase") \
+                            .withColumnRenamed("sum(total_redeem_amt)", "total_redeem")
+daily_balance = daily_balance.withColumn(
+    "day_index", 
+    expr("datediff(report_date, '2014-01-01')")
+)
 
-fit_purchase = model_purchase.fit()
-fit_redeem = model_redeem.fit()
+feature_cols = ["total_purchase", "total_redeem"]
+assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
+daily_balance = assembler.transform(daily_balance)
 
-# 预测 2014 年 9 月
-forecast_purchase = fit_purchase.forecast(steps=30)
-forecast_redeem = fit_redeem.forecast(steps=30)
+train_data = daily_balance.filter(col("report_date") < "2014-09-01")
 
-# 将预测结果四舍五入为整数
-forecast_purchase = forecast_purchase.round().astype(int)
-forecast_redeem = forecast_redeem.round().astype(int)
+lr = LinearRegression(featuresCol="features", labelCol="day_index")
+lr_model = lr.fit(train_data)
 
-# 保存预测结果
-result = pd.DataFrame({
-    'report_date': pd.date_range(start='2014-09-01', end='2014-09-30'),
-    'purchase': forecast_purchase,
-    'redeem': forecast_redeem
-})
-result.to_csv("tc_comp_predict_table.csv", index=False, header=True)
+future_dates = spark.createDataFrame(
+    [(i,) for i in range(243, 243 + 30)],  # 243 = day_index for 2014-09-01
+    schema=["day_index"]
+)
+
+avg_values = daily_balance.select(
+    expr("mean(total_purchase)").alias("total_purchase"),
+    expr("mean(total_redeem)").alias("total_redeem")
+).first()
+
+future_dates = future_dates.withColumn("total_purchase", lit(avg_values["total_purchase"])) \
+                           .withColumn("total_redeem", lit(avg_values["total_redeem"]))
+
+future_dates = assembler.transform(future_dates)
+
+predictions = lr_model.transform(future_dates).select("day_index", "prediction")
+predictions.write.csv("tc_comp_predict_table.csv", header=True)
+spark.stop()
